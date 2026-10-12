@@ -106,4 +106,3 @@ st.caption(
     "Accuracy depends on the training data and model."
 )
 
-)
