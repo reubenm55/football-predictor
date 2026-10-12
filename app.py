@@ -105,4 +105,3 @@ st.caption(
     "Predictions are estimates, not guarantees. "
     "Accuracy depends on the training data and model."
 )
-
