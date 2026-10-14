@@ -412,7 +412,11 @@ else:
                         "Date (UTC)": match_row["Date (UTC)"],
                         "League": league_name,
                         "Match": f"{home_name} vs {away_name}",
-                        "Prediction": "Team history unavailable",
+                       "Prediction": (
+    f"History missing: "
+    f"{home_name if not home_team_key else ''} "
+    f"{away_name if not away_team_key else ''}"
+).strip(),
                         "Home Win": "—",
                         "Draw": "—",
                         "Away Win": "—",
