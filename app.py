@@ -409,7 +409,7 @@ else:
 
                
 
-                                if not home_team_key or not away_team_key:
+                 if not home_team_key or not away_team_key:
                     missing_teams = []
 
                     if not home_team_key:
