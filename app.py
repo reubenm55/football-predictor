@@ -681,4 +681,3 @@ st.caption(
     "Fixture availability depends on your API provider."
 )
 
-    )
