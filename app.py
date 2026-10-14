@@ -6,6 +6,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import requests
+import re
+import unicodedata
+from datetime import date, timedelta
+from difflib import get_close_matches
 
 st.set_page_config(
     page_title="Football Predictor",
@@ -199,9 +204,6 @@ st.caption(
 
 # ============== UPCOMING FIXTURES ==============
 
-import requests
-from datetime import date, timedelta
-
 st.divider()
 st.header("📅 Upcoming Fixtures")
 st.write("Explore scheduled matches across your supported leagues.")
@@ -328,12 +330,6 @@ else:
             
             # ===== AUTOMATIC MATCH PREDICTIONS =====
 
-                       # ===== AUTOMATIC MATCH PREDICTIONS =====
-
-            import re
-            import unicodedata
-            from difflib import get_close_matches
-
             st.subheader("🔮 Predictions for Upcoming Fixtures")
 
             def normalize_team(name):
@@ -344,18 +340,17 @@ else:
                 )
                 name = re.sub(r"[^a-zA-Z0-9 ]", " ", name)
                 name = re.sub(
-                    r"\b(fc|afc|cf|sc|club)\b",
-                    "",
-                    name,
+                    r"\b(fc|afc|cf|sc|club)\b", "", name,
                     flags=re.IGNORECASE
                 )
                 return " ".join(name.lower().split())
 
             def find_team(api_name, league_name):
                 known = league_team_history.get(league_name, {})
+                names = list(known.keys())
+
                 normalized = {
-                    normalize_team(name): name
-                    for name in known.keys()
+                    normalize_team(name): name for name in names
                 }
 
                 search_name = normalize_team(api_name)
@@ -377,6 +372,7 @@ else:
                 if search_name in normalized:
                     return normalized[search_name]
 
+                # Only accept a very close name match
                 matches_found = get_close_matches(
                     search_name,
                     list(normalized.keys()),
@@ -394,7 +390,6 @@ else:
                     return None, None
 
                 recent = results[-5:]
-
                 scored = np.mean([m[1] for m in recent])
                 conceded = np.mean([m[2] for m in recent])
 
@@ -423,10 +418,7 @@ else:
                         "Date (UTC)": match_row["Date (UTC)"],
                         "League": league_name,
                         "Match": f"{home_name} vs {away_name}",
-                        "Prediction": (
-                            "History missing: "
-                            + ", ".join(missing_teams)
-                        ),
+                        "Prediction": "History missing: " + ", ".join(missing_teams),
                         "Home Win": "—",
                         "Draw": "—",
                         "Away Win": "—",
@@ -437,7 +429,6 @@ else:
                 home_results = league_team_history[league_name][
                     home_team_key
                 ]
-
                 away_results = league_team_history[league_name][
                     away_team_key
                 ]
@@ -450,77 +441,58 @@ else:
                     columns=feature_columns
                 )
 
-                try:
-                    probabilities = model.predict_proba(input_row)[0]
-                    classes = model.classes_
+                probabilities = model.predict_proba(input_row)[0]
+                classes = model.classes_
 
-                    probability_map = {
-                        str(label): float(prob)
-                        for label, prob in zip(classes, probabilities)
-                    }
+                probability_map = {
+                    str(label): float(prob)
+                    for label, prob in zip(classes, probabilities)
+                }
 
-                    home_prob = probability_map.get("H", 0.0)
-                    draw_prob = probability_map.get("D", 0.0)
-                    away_prob = probability_map.get("A", 0.0)
+                home_prob = probability_map.get("H", 0.0)
+                draw_prob = probability_map.get("D", 0.0)
+                away_prob = probability_map.get("A", 0.0)
 
-                    outcome = max(
-                        [
-                            (home_prob, f"{home_name} win"),
-                            (draw_prob, "Draw"),
-                            (away_prob, f"{away_name} win")
-                        ],
-                        key=lambda item: item[0]
-                    )[1]
+                outcome = max(
+                    [
+                        (home_prob, f"{home_name} win"),
+                        (draw_prob, "Draw"),
+                        (away_prob, f"{away_name} win")
+                    ],
+                    key=lambda item: item[0]
+                )[1]
 
-                    home_scored, home_conceded = goal_estimate(
-                        home_results
+                home_scored, home_conceded = goal_estimate(
+                    home_results
+                )
+                away_scored, away_conceded = goal_estimate(
+                    away_results
+                )
+
+                if home_scored is not None and away_scored is not None:
+                    predicted_home_goals = round(
+                        (home_scored + away_conceded) / 2
                     )
-
-                    away_scored, away_conceded = goal_estimate(
-                        away_results
+                    predicted_away_goals = round(
+                        (away_scored + home_conceded) / 2
                     )
+                    score = (
+                        f"{predicted_home_goals} - "
+                        f"{predicted_away_goals}"
+                    )
+                else:
+                    score = "Unavailable"
 
-                    if (
-                        home_scored is not None
-                        and away_scored is not None
-                    ):
-                        predicted_home_goals = round(
-                            (home_scored + away_conceded) / 2
-                        )
-
-                        predicted_away_goals = round(
-                            (away_scored + home_conceded) / 2
-                        )
-
-                        score = (
-                            f"{predicted_home_goals} - "
-                            f"{predicted_away_goals}"
-                        )
-                    else:
-                        score = "Unavailable"
-
-                    prediction_rows.append({
-                        "Date (UTC)": match_row["Date (UTC)"],
-                        "League": league_name,
-                        "Match": f"{home_name} vs {away_name}",
-                        "Prediction": outcome,
-                        "Home Win": f"{home_prob:.1%}",
-                        "Draw": f"{draw_prob:.1%}",
-                        "Away Win": f"{away_prob:.1%}",
-                        "Estimated Score": score
-                    })
-
-                except Exception as e:
-                    prediction_rows.append({
-                        "Date (UTC)": match_row["Date (UTC)"],
-                        "League": league_name,
-                        "Match": f"{home_name} vs {away_name}",
-                        "Prediction": f"Prediction error: {e}",
-                        "Home Win": "—",
-                        "Draw": "—",
-                        "Away Win": "—",
-                        "Estimated Score": "—"
-                    })
+                prediction_rows.append({
+                    "Date (UTC)": match_row["Date (UTC)"],
+                    "League": league_name,
+                    "Match": f"{home_name} vs {away_name}",
+                    "Prediction": outcome,
+                    "Home Win": f"{home_prob:.1%}",
+                    "Draw": f"{draw_prob:.1%}",
+                    "Away Win": f"{away_prob:.1%}",
+                    "Estimated Score": score
+                })
 
             predictions_df = pd.DataFrame(prediction_rows)
 
@@ -536,6 +508,7 @@ else:
                 "prediction model. Unmatched teams require updated "
                 "historical data."
             )
+
         else:
             st.info(
                 "No upcoming fixtures were returned for "
