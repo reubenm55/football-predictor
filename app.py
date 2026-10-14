@@ -435,6 +435,7 @@ for _, match_row in fixture_df.iterrows():
     # Continue with your existing prediction calculations here.
 
 
+   
     if not home_team_key or not away_team_key:
         missing_teams = []
 
@@ -455,6 +456,7 @@ for _, match_row in fixture_df.iterrows():
             "Estimated Score": "—"
         })
         continue
+
 
                         "Home Win": "—",
                         "Draw": "—",
