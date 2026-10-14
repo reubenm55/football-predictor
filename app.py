@@ -397,9 +397,10 @@ else:
 
                 return scored, conceded
 
-            prediction_rows = []
+           
+prediction_rows = []
 
-    for _, match_row in fixture_df.iterrows():
+for _, match_row in fixture_df.iterrows():
     league_name = match_row["League"]
     home_name = match_row["Home Team"]
     away_name = match_row["Away Team"]
@@ -428,13 +429,11 @@ else:
         })
         continue
 
-                 for _, match_row in fixture_df.iterrows():
-    league_name = match_row["League"]
-    home_name = match_row["Home Team"]
-    away_name = match_row["Away Team"]
+    home_form = recent_form(league_name, home_team_key)
+    away_form = recent_form(league_name, away_team_key)
 
-    home_team_key = find_team(home_name, league_name)
-    away_team_key = find_team(away_name, league_name)
+    # Continue with your existing prediction calculations here.
+
 
     if not home_team_key or not away_team_key:
         missing_teams = []
