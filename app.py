@@ -429,26 +429,34 @@ else:
                     continue
                
 
-                 if not home_team_key or not away_team_key:
-                    missing_teams = []
+                 for _, match_row in fixture_df.iterrows():
+    league_name = match_row["League"]
+    home_name = match_row["Home Team"]
+    away_name = match_row["Away Team"]
 
-                    if not home_team_key:
-                        missing_teams.append(home_name)
+    home_team_key = find_team(home_name, league_name)
+    away_team_key = find_team(away_name, league_name)
 
-                    if not away_team_key:
-                        missing_teams.append(away_name)
+    if not home_team_key or not away_team_key:
+        missing_teams = []
 
-                    prediction_rows.append({
-                        "Date (UTC)": match_row["Date (UTC)"],
-                        "League": league_name,
-                        "Match": f"{home_name} vs {away_name}",
-                        "Prediction": "History missing: " + ", ".join(missing_teams),
-                        "Home Win": "—",
-                        "Draw": "—",
-                        "Away Win": "—",
-                        "Estimated Score": "—"
-                    })
-                    continue
+        if not home_team_key:
+            missing_teams.append(home_name)
+
+        if not away_team_key:
+            missing_teams.append(away_name)
+
+        prediction_rows.append({
+            "Date (UTC)": match_row["Date (UTC)"],
+            "League": league_name,
+            "Match": f"{home_name} vs {away_name}",
+            "Prediction": "History missing: " + ", ".join(missing_teams),
+            "Home Win": "—",
+            "Draw": "—",
+            "Away Win": "—",
+            "Estimated Score": "—"
+        })
+        continue
 
                         "Home Win": "—",
                         "Draw": "—",
