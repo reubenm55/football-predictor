@@ -325,6 +325,184 @@ else:
                 use_container_width=True,
                 hide_index=True
             )
+            
+            # ===== AUTOMATIC MATCH PREDICTIONS =====
+
+            import re
+            import unicodedata
+            from difflib import get_close_matches
+
+            st.subheader("🔮 Predictions for Upcoming Fixtures")
+
+            def normalize_team(name):
+                name = unicodedata.normalize("NFKD", str(name))
+                name = "".join(
+                    c for c in name
+                    if not unicodedata.combining(c)
+                )
+                name = re.sub(r"[^a-zA-Z0-9 ]", " ", name)
+                name = re.sub(
+                    r"\b(fc|afc|cf|sc|club)\b", "", name,
+                    flags=re.IGNORECASE
+                )
+                return " ".join(name.lower().split())
+
+            def find_team(api_name, league_name):
+                known = league_team_history.get(league_name, {})
+                names = list(known.keys())
+
+                normalized = {
+                    normalize_team(name): name for name in names
+                }
+
+                search_name = normalize_team(api_name)
+
+                aliases = {
+                    "brighton and hove albion": "brighton",
+                    "wolverhampton wanderers": "wolves",
+                    "manchester united": "man united",
+                    "tottenham hotspur": "tottenham",
+                    "west ham united": "west ham",
+                    "newcastle united": "newcastle",
+                    "nottingham forest": "nottm forest",
+                    "paris saint germain": "paris sg",
+                    "bayern munchen": "bayern munich"
+                }
+
+                search_name = aliases.get(search_name, search_name)
+
+                if search_name in normalized:
+                    return normalized[search_name]
+
+                # Only accept a very close name match
+                matches_found = get_close_matches(
+                    search_name,
+                    list(normalized.keys()),
+                    n=1,
+                    cutoff=0.88
+                )
+
+                if matches_found:
+                    return normalized[matches_found[0]]
+
+                return None
+
+            def goal_estimate(results):
+                if not results:
+                    return None, None
+
+                recent = results[-5:]
+                scored = np.mean([m[1] for m in recent])
+                conceded = np.mean([m[2] for m in recent])
+
+                return scored, conceded
+
+            prediction_rows = []
+
+            for _, match_row in fixture_df.iterrows():
+                league_name = match_row["League"]
+                home_name = match_row["Home Team"]
+                away_name = match_row["Away Team"]
+
+                home_team_key = find_team(home_name, league_name)
+                away_team_key = find_team(away_name, league_name)
+
+                if not home_team_key or not away_team_key:
+                    prediction_rows.append({
+                        "Date (UTC)": match_row["Date (UTC)"],
+                        "League": league_name,
+                        "Match": f"{home_name} vs {away_name}",
+                        "Prediction": "Team history unavailable",
+                        "Home Win": "—",
+                        "Draw": "—",
+                        "Away Win": "—",
+                        "Estimated Score": "—"
+                    })
+                    continue
+
+                home_results = league_team_history[league_name][
+                    home_team_key
+                ]
+                away_results = league_team_history[league_name][
+                    away_team_key
+                ]
+
+                home_form = summarize_form(home_results[-5:])
+                away_form = summarize_form(away_results[-5:])
+
+                input_row = pd.DataFrame(
+                    [home_form + away_form],
+                    columns=feature_columns
+                )
+
+                probabilities = model.predict_proba(input_row)[0]
+                classes = model.classes_
+
+                probability_map = {
+                    str(label): float(prob)
+                    for label, prob in zip(classes, probabilities)
+                }
+
+                home_prob = probability_map.get("H", 0.0)
+                draw_prob = probability_map.get("D", 0.0)
+                away_prob = probability_map.get("A", 0.0)
+
+                outcome = max(
+                    [
+                        (home_prob, f"{home_name} win"),
+                        (draw_prob, "Draw"),
+                        (away_prob, f"{away_name} win")
+                    ],
+                    key=lambda item: item[0]
+                )[1]
+
+                home_scored, home_conceded = goal_estimate(
+                    home_results
+                )
+                away_scored, away_conceded = goal_estimate(
+                    away_results
+                )
+
+                if home_scored is not None and away_scored is not None:
+                    predicted_home_goals = round(
+                        (home_scored + away_conceded) / 2
+                    )
+                    predicted_away_goals = round(
+                        (away_scored + home_conceded) / 2
+                    )
+                    score = (
+                        f"{predicted_home_goals} - "
+                        f"{predicted_away_goals}"
+                    )
+                else:
+                    score = "Unavailable"
+
+                prediction_rows.append({
+                    "Date (UTC)": match_row["Date (UTC)"],
+                    "League": league_name,
+                    "Match": f"{home_name} vs {away_name}",
+                    "Prediction": outcome,
+                    "Home Win": f"{home_prob:.1%}",
+                    "Draw": f"{draw_prob:.1%}",
+                    "Away Win": f"{away_prob:.1%}",
+                    "Estimated Score": score
+                })
+
+            predictions_df = pd.DataFrame(prediction_rows)
+
+            st.dataframe(
+                predictions_df,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            st.caption(
+                "Probabilities are model estimates. Scores are rough "
+                "estimates based on recent goals, not a trained score "
+                "prediction model. Unmatched teams require updated "
+                "historical data."
+            )
+
         else:
             st.info(
                 "No upcoming fixtures were returned for "
