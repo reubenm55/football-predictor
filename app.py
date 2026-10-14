@@ -408,6 +408,7 @@ else:
                 away_team_key = find_team(away_name, league_name)
 
                
+
                 if not home_team_key or not away_team_key:
                     missing_teams = []
                     if not home_team_key:
@@ -426,6 +427,7 @@ else:
                         "Estimated Score": "—"
                     })
                     continue
+
 
                         "Home Win": "—",
                         "Draw": "—",
