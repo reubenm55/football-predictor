@@ -427,8 +427,8 @@ else:
                     away_team_key
                 ]
 
-                home_form = summarize_form(home_results[-5:])
-                away_form = summarize_form(away_results[-5:])
+                home_form = recent_form(league_name, home_team_key)
+                away_form = recent_form(league_name, away_team_key)
 
                 input_row = pd.DataFrame(
                     [home_form + away_form],
