@@ -196,3 +196,150 @@ st.caption(
     "FOOTBALL PREDICTOR | Built with Python, "
     "Streamlit and Machine Learning"
 )
+
+# ============== UPCOMING FIXTURES ==============
+
+import requests
+from datetime import date, timedelta
+
+st.divider()
+st.header("📅 Upcoming Fixtures")
+st.write("Explore scheduled matches across your supported leagues.")
+
+API_TOKEN = st.secrets.get("FOOTBALL_DATA_TOKEN", "")
+
+COMPETITION_CODES = {
+    "Premier League": "PL",
+    "La Liga": "PD",
+    "Bundesliga": "BL1",
+    "Serie A": "SA",
+    "Ligue 1": "FL1",
+}
+
+if not API_TOKEN:
+    st.warning(
+        "Football API token not found. Add "
+        "FOOTBALL_DATA_TOKEN to Streamlit Secrets."
+    )
+else:
+    fixture_league = st.selectbox(
+        "Filter fixtures by league",
+        ["All leagues"] + list(COMPETITION_CODES.keys()),
+        key="fixture_league"
+    )
+
+    days_ahead = st.selectbox(
+        "Show matches in the next",
+        [7, 14, 30],
+        index=1,
+        format_func=lambda n: f"{n} days",
+        key="fixture_days"
+    )
+
+    @st.cache_data(ttl=1800)
+    def fetch_fixtures(token, competition_code, start_date, end_date):
+        url = (
+            "https://api.football-data.org/v4/competitions/"
+            f"{competition_code}/matches"
+        )
+
+        response = requests.get(
+            url,
+            headers={"X-Auth-Token": token},
+            params={
+                "dateFrom": start_date,
+                "dateTo": end_date
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
+        return response.json().get("matches", [])
+
+    if st.button("🔄 Load Upcoming Fixtures"):
+        start = date.today()
+        end = start + timedelta(days=days_ahead)
+
+        leagues_to_fetch = (
+            list(COMPETITION_CODES.items())
+            if fixture_league == "All leagues"
+            else [(fixture_league,
+                   COMPETITION_CODES[fixture_league])]
+        )
+
+        fixtures = []
+        failed_leagues = []
+
+        with st.spinner("Fetching fixtures..."):
+            for league_name, code in leagues_to_fetch:
+                try:
+                    matches_data = fetch_fixtures(
+                        API_TOKEN,
+                        code,
+                        start.isoformat(),
+                        end.isoformat()
+                    )
+
+                    for match in matches_data:
+                        if match.get("status") not in [
+                            "SCHEDULED", "TIMED"
+                        ]:
+                            continue
+
+                        fixtures.append({
+                            "Date (UTC)": match.get("utcDate", ""),
+                            "League": league_name,
+                            "Home Team": match.get(
+                                "homeTeam", {}
+                            ).get("name", "Unknown"),
+                            "Away Team": match.get(
+                                "awayTeam", {}
+                            ).get("name", "Unknown"),
+                            "Status": match.get("status", "")
+                        })
+
+                except requests.HTTPError as e:
+                    failed_leagues.append(
+                        f"{league_name}: HTTP {e.response.status_code}"
+                    )
+                except requests.RequestException:
+                    failed_leagues.append(
+                        f"{league_name}: connection problem"
+                    )
+                except Exception:
+                    failed_leagues.append(
+                        f"{league_name}: unexpected response"
+                    )
+
+        if fixtures:
+            fixture_df = pd.DataFrame(fixtures)
+            fixture_df["Date (UTC)"] = pd.to_datetime(
+                fixture_df["Date (UTC)"], utc=True, errors="coerce"
+            )
+            fixture_df = fixture_df.sort_values("Date (UTC)")
+
+            st.success(f"Found {len(fixture_df)} upcoming matches.")
+
+            st.dataframe(
+                fixture_df,
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info(
+                "No upcoming fixtures were returned for "
+                "the selected period."
+            )
+
+        if failed_leagues:
+            st.warning(
+                "Some leagues could not be loaded. "
+                "Your API plan may not include every competition."
+            )
+            for problem in failed_leagues:
+                st.caption(problem)
+
+    st.caption(
+        "Fixture dates are shown in UTC. "
+        "Availability depends on your API provider and subscription."
+    )
