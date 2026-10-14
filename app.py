@@ -397,9 +397,9 @@ else:
 
                 return scored, conceded
 
-            prediction_rows = []
+                       prediction_rows = []
 
-             for _, match_row in fixture_df.iterrows():
+            for _, match_row in fixture_df.iterrows():
                 league_name = match_row["League"]
                 home_name = match_row["Home Team"]
                 away_name = match_row["Away Team"]
