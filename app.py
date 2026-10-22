@@ -24,25 +24,110 @@ st.set_page_config(
     layout="wide"
 )
 
+
 st.markdown("""
 <style>
+/* Main dashboard background */
 .stApp {
-    background: linear-gradient(135deg, #07111f, #101d33);
+    background:
+        radial-gradient(ellipse at top left, #173b50 0%, transparent 45%),
+        linear-gradient(135deg, #07111f, #0b192b 55%, #102b35);
+    color: #f1f5f9;
+}
+
+/* Main content spacing */
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    max-width: 1400px;
+}
+
+/* Headings */
+h1 {
+    color: #ffffff !important;
+    font-size: 2.7rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -1px;
+}
+
+h2, h3 {
+    color: #e2e8f0 !important;
+    font-weight: 700 !important;
+}
+
+p, label, .stMarkdown {
+    color: #dbeafe;
+}
+
+/* Buttons */
+div.stButton > button {
+    background: linear-gradient(90deg, #16a34a, #20c997);
+    color: #ffffff;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    min-height: 46px;
+    width: 100%;
+    transition: 0.2s ease;
+}
+
+div.stButton > button:hover {
+    background: linear-gradient(90deg, #15803d, #0d9488);
+    color: #ffffff;
+    border: none;
+    transform: translateY(-1px);
+}
+
+/* Dropdowns and input fields */
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div {
+    background-color: #13263a;
+    border: 1px solid #29445c;
+    border-radius: 10px;
     color: white;
 }
-h1, h2, h3, p, label {
-    color: white !important;
+
+/* Prediction metrics */
+div[data-testid="stMetric"] {
+    background: rgba(19, 38, 58, 0.88);
+    border: 1px solid #29445c;
+    border-radius: 14px;
+    padding: 18px;
 }
-div.stButton > button {
-    background: #20c997;
-    color: #06111f;
-    font-weight: bold;
-    border-radius: 10px;
-    width: 100%;
-    min-height: 45px;
+
+div[data-testid="stMetricLabel"] {
+    color: #93c5fd;
+}
+
+div[data-testid="stMetricValue"] {
+    color: #4ade80;
+    font-weight: 800;
+}
+
+/* Tables */
+div[data-testid="stDataFrame"] {
+    border: 1px solid #29445c;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Separators */
+hr {
+    border-color: #29445c;
+}
+
+/* Success messages */
+div[data-testid="stAlert"] {
+    border-radius: 12px;
+}
+
+/* Footer text */
+.stCaption {
+    color: #94a3b8 !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 
 # ==================================================
