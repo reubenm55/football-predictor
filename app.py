@@ -432,6 +432,34 @@ elif st.button("🔮 Predict Match", key="manual_prediction"):
             st.progress(
                 min(max(result["away_prob"], 0.0), 1.0)
             )
+            
+        st.divider()
+
+        st.subheader("🎯 Prediction Summary")
+
+        st.success(
+            f"Most likely outcome: **{result['outcome']}**"
+        )
+
+        probabilities = [
+            result["home_prob"],
+            result["draw_prob"],
+            result["away_prob"]
+        ]
+
+        probability_gap = max(probabilities) - sorted(probabilities)[-2]
+
+        if probability_gap < 0.10:
+            st.warning(
+                "⚠️ This match looks difficult to predict. "
+                "The leading outcomes have similar probabilities."
+            )
+        else:
+            st.info(
+                "The model has a clearer leading outcome, "
+                "but the prediction is not guaranteed."
+            )
+
 
         st.success(
             f"Most likely outcome: {result['outcome']}"
