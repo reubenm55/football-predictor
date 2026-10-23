@@ -14,9 +14,6 @@ import sqlite3
 
 from datetime import date, timedelta
 from difflib import get_close_matches
-if not st.session_state.get("authenticated", False):
-    authentication_screen()
-    st.stop()
 
 # ==================================================
 # PAGE CONFIGURATION
