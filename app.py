@@ -11,10 +11,6 @@ import re
 import unicodedata
 import hashlib
 import sqlite3
-if not st.session_state.get("authenticated", False):
-    authentication_screen()
-    st.stop()
-st.title("⚽ Football Predictor")
 
 from datetime import date, timedelta
 from difflib import get_close_matches
