@@ -9,6 +9,8 @@ import joblib
 import requests
 import re
 import unicodedata
+import hashlib
+import sqlite3
 
 from datetime import date, timedelta
 from difflib import get_close_matches
