@@ -342,6 +342,13 @@ def predict_outcome(league_name, home_team, away_team):
 # MAIN DASHBOARD
 # ==================================================
 
+
+# Show login before opening the dashboard
+if not st.session_state.get("authenticated", False):
+    authentication_screen()
+    st.stop()
+
+# Dashboard starts here
 st.title("⚽ Football Predictor")
 
 st.write("### Multi-League Match Prediction Dashboard")
