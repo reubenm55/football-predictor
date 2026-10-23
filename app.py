@@ -796,3 +796,101 @@ st.caption(
     "Fixture availability depends on your API provider."
 )
 
+# ---------- USER REGISTRATION AND LOGIN ----------
+
+def init_user_database():
+    conn = sqlite3.connect("users.db")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def register_user(username, email, password):
+    conn = sqlite3.connect("users.db")
+    try:
+        conn.execute(
+            "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+            (username, email, hash_password(password))
+        )
+        conn.commit()
+        return True, "Registration successful! You can now log in."
+    except sqlite3.IntegrityError:
+        return False, "That username or email is already registered."
+    finally:
+        conn.close()
+
+
+def verify_user(username, password):
+    conn = sqlite3.connect("users.db")
+    row = conn.execute(
+        "SELECT password_hash FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+    conn.close()
+
+    return row is not None and row[0] == hash_password(password)
+
+
+def authentication_screen():
+    init_user_database()
+
+    st.title("⚽ Football Predictor")
+    st.subheader("Welcome")
+
+    choice = st.radio(
+        "Choose an option",
+        ["Login", "Register"],
+        horizontal=True
+    )
+
+    if choice == "Register":
+        with st.form("register_form"):
+            username = st.text_input("Username")
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            confirm = st.text_input("Confirm password", type="password")
+            submitted = st.form_submit_button("Create account")
+
+        if submitted:
+            if not username.strip() or not email.strip() or not password:
+                st.error("Please fill in all fields.")
+            elif "@" not in email or "." not in email:
+                st.error("Enter a valid email address.")
+            elif len(password) < 8:
+                st.error("Use a password with at least 8 characters.")
+            elif password != confirm:
+                st.error("Passwords do not match.")
+            else:
+                success, message = register_user(
+                    username.strip(), email.strip().lower(), password
+                )
+                if success:
+                    st.success(message)
+                else:
+                    st.error(message)
+
+    else:
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login")
+
+        if submitted:
+            if verify_user(username.strip(), password):
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = username.strip()
+                st.rerun()
+            else:
+                st.error("Incorrect username or password.")
+
+
