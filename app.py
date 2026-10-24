@@ -155,19 +155,58 @@ except Exception as e:
 # HELPER FUNCTIONS
 # ==================================================
 
-def recent_form(league_name, team):
+def _valid_history(history):
+    """Return clean match records shaped as (points, goals_for, goals_against)."""
+    cleaned = []
+    for match in history or []:
+        try:
+            points, goals_for, goals_against = float(match[0]), float(match[1]), float(match[2])
+            if (
+                np.isfinite(points) and np.isfinite(goals_for) and np.isfinite(goals_against)
+                and points in (0, 1, 3) and goals_for >= 0 and goals_against >= 0
+            ):
+                cleaned.append((points, goals_for, goals_against))
+        except (TypeError, ValueError, IndexError):
+            continue
+    return cleaned
+
+
+def league_average_form(league_name):
+    """Calculate fallback features from real recorded matches in this league."""
     history = league_team_history.get(league_name, {})
-    recent = history.get(team, [])[-5:]
+    all_matches = []
+    for records in history.values():
+        all_matches.extend(_valid_history(records))
+
+    if not all_matches:
+        # Neutral fallback only when the bundle contains no usable league history.
+        return [1.2, 1.2, 1.2, 1.0, 1.0]
+
+    recent = all_matches[-500:]  # limit influence of very old / unusually large histories
+    return [
+        float(np.mean([m[0] for m in recent])),
+        float(np.mean([m[1] for m in recent])),
+        float(np.mean([m[2] for m in recent])),
+        float(np.mean([m[0] == 3 for m in recent]) * 5),
+        float(np.mean([m[0] == 0 for m in recent]) * 5),
+    ]
+
+
+def recent_form(league_name, team):
+    """Build the same five features used by the saved model, with data-aware fallbacks."""
+    history = league_team_history.get(league_name, {})
+    recent = _valid_history(history.get(team, []))[-5:]
 
     if not recent:
-        return [0.0, 0.0, 0.0, 0, 0]
+        # Do not encode missing history as zero goals / zero wins.
+        return league_average_form(league_name)
 
     return [
         float(np.mean([m[0] for m in recent])),
         float(np.mean([m[1] for m in recent])),
         float(np.mean([m[2] for m in recent])),
         int(sum(m[0] == 3 for m in recent)),
-        int(sum(m[0] == 0 for m in recent))
+        int(sum(m[0] == 0 for m in recent)),
     ]
 
 
@@ -193,66 +232,42 @@ def form_summary(league_name, team):
 
 
 def goal_estimate(results, default_scored=1.2, default_conceded=1.2):
-    """
-    Estimate goals scored and conceded using recent matches.
-    Use sensible fallback values when historical data is missing.
-    """
-
-    if not results:
+    """Estimate goals from valid recent records; caller may provide league-based fallbacks."""
+    valid_matches = _valid_history(results)
+    recent = valid_matches[-5:]
+    if not recent:
         return float(default_scored), float(default_conceded)
 
-    recent = results[-5:]
-
-    # Ignore incomplete or invalid match records
-    valid_matches = []
-    for match in recent:
-        try:
-            scored = float(match[1])
-            conceded = float(match[2])
-
-            if (
-                np.isfinite(scored)
-                and np.isfinite(conceded)
-                and scored >= 0
-                and conceded >= 0
-            ):
-                valid_matches.append((scored, conceded))
-        except (TypeError, ValueError, IndexError):
-            continue
-
-    # If no valid historical matches remain, use fallback values
-    if not valid_matches:
-        return float(default_scored), float(default_conceded)
-
-    scored_avg = np.mean([m[0] for m in valid_matches])
-    conceded_avg = np.mean([m[1] for m in valid_matches])
-
-    return float(scored_avg), float(conceded_avg)
+    scored_avg = float(np.mean([m[1] for m in recent]))
+    conceded_avg = float(np.mean([m[2] for m in recent]))
+    return scored_avg, conceded_avg
 
 
-def estimate_score(home_results, away_results):
-    home_scored, home_conceded = goal_estimate(home_results)
-    away_scored, away_conceded = goal_estimate(away_results)
+def estimate_score(home_results, away_results, league_name=None):
+    # Use real league averages when a team has no usable match history.
+    fallback_scored, fallback_conceded = 1.2, 1.2
+    if league_name:
+        history = league_team_history.get(league_name, {})
+        goals_for, goals_against = [], []
+        for records in history.values():
+            for match in _valid_history(records):
+                goals_for.append(match[1])
+                goals_against.append(match[2])
+        if goals_for and goals_against:
+            fallback_scored = float(np.mean(goals_for))
+            fallback_conceded = float(np.mean(goals_against))
 
-    if (
-        home_scored is None
-        or home_conceded is None
-        or away_scored is None
-        or away_conceded is None
-    ):
-        return None
-
-    home_goals = max(
-        0,
-        round((home_scored + away_conceded) / 2)
+    home_scored, home_conceded = goal_estimate(
+        home_results, fallback_scored, fallback_conceded
+    )
+    away_scored, away_conceded = goal_estimate(
+        away_results, fallback_scored, fallback_conceded
     )
 
-    away_goals = max(
-        0,
-        round((away_scored + home_conceded) / 2)
-    )
-
+    home_goals = int(np.clip(round((home_scored + away_conceded) / 2), 0, 6))
+    away_goals = int(np.clip(round((away_scored + home_conceded) / 2), 0, 6))
     return f"{home_goals} - {away_goals}"
+
 
 
 def normalize_team(name):
@@ -276,13 +291,12 @@ def normalize_team(name):
 
 
 def find_team(api_name, league_name):
-    known = league_team_history.get(league_name, {})
+    """Match API names to known league teams, including teams lacking history."""
+    history_names = list(league_team_history.get(league_name, {}).keys())
+    league_names = list(teams_by_league.get(league_name, []))
+    known_names = list(dict.fromkeys(history_names + league_names))
 
-    normalized = {
-        normalize_team(name): name
-        for name in known.keys()
-    }
-
+    normalized = {normalize_team(name): name for name in known_names}
     search_name = normalize_team(api_name)
 
     aliases = {
@@ -294,24 +308,16 @@ def find_team(api_name, league_name):
         "newcastle united": "newcastle",
         "nottingham forest": "nottm forest",
         "paris saint germain": "paris sg",
-        "bayern munchen": "bayern munich"
+        "bayern munchen": "bayern munich",
     }
-
     search_name = aliases.get(search_name, search_name)
 
     if search_name in normalized:
         return normalized[search_name]
 
-    matches = get_close_matches(
-        search_name,
-        list(normalized.keys()),
-        n=1,
-        cutoff=0.88
-    )
-
+    matches = get_close_matches(search_name, list(normalized.keys()), n=1, cutoff=0.88)
     if matches:
         return normalized[matches[0]]
-
     return None
 
 
@@ -349,7 +355,8 @@ def predict_outcome(league_name, home_team, away_team):
 
     score = estimate_score(
         history.get(home_team, []),
-        history.get(away_team, [])
+        history.get(away_team, []),
+        league_name=league_name,
     )
 
     return {
