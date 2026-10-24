@@ -663,23 +663,40 @@ else:
 
 with st.expander("💳 Upgrade with M-Pesa", expanded=not subscription_active):
     price_kes = int(st.secrets.get("SUBSCRIPTION_PRICE_KES", 300))
+    personal_mpesa_number = str(st.secrets.get("MPESA_PERSONAL_NUMBER", "")).strip()
     st.write(f"**30-day subscription: KSh {price_kes:,}**")
-    st.caption("Use your Kenyan M-Pesa number. A payment request will be sent to your phone.")
-    with st.form("mpesa_subscription_form"):
-        mpesa_phone = st.text_input("M-Pesa phone number", placeholder="0712345678")
-        pay_clicked = st.form_submit_button(f"Pay KSh {price_kes:,} with M-Pesa")
-    if pay_clicked:
-        if not mpesa_phone.strip():
-            st.error("Enter the phone number to receive the M-Pesa prompt.")
+    if personal_mpesa_number:
+        st.markdown(f"**Send payment to M-Pesa number:** `{personal_mpesa_number}`")
+    else:
+        st.warning("The app owner has not added the receiving M-Pesa number in Streamlit Secrets yet.")
+    st.write("After sending the money, enter the sender's phone number and the M-Pesa transaction code below. Your subscription stays pending until the owner verifies the payment.")
+    with st.form("manual_mpesa_subscription_form"):
+        payer_phone = st.text_input("Phone number used to pay", placeholder="0712345678")
+        receipt_code = st.text_input("M-Pesa transaction code", placeholder="e.g. QWE123ABC4")
+        submit_payment = st.form_submit_button("Submit payment for verification")
+    if submit_payment:
+        cleaned_phone = payer_phone.strip()
+        cleaned_receipt = receipt_code.strip().upper()
+        if not personal_mpesa_number:
+            st.error("The app owner must configure MPESA_PERSONAL_NUMBER in Streamlit Secrets first.")
+        elif not cleaned_phone or not cleaned_receipt:
+            st.error("Enter both the phone number used to pay and the M-Pesa transaction code.")
+        elif len(cleaned_receipt) < 6 or len(cleaned_receipt) > 20:
+            st.error("Check the transaction code and enter it as shown in the M-Pesa confirmation message.")
         else:
-            with st.spinner("Requesting M-Pesa payment..."):
-                ok, message = mpesa_stk_push(current_user, mpesa_phone.strip(), price_kes)
-            (st.success if ok else st.error)(message)
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute("INSERT INTO payments(username,phone,amount,checkout_request_id,merchant_request_id,status,created_at) VALUES(?,?,?,?,?,?,?)", (current_user, cleaned_phone, price_kes, cleaned_receipt, "MANUAL_PERSONAL_MPESA", "PENDING", local_now().isoformat(timespec="seconds")))
+                    conn.commit()
+                st.success("Payment details submitted. Your subscription will activate after the owner verifies the transaction in M-Pesa messages or account records.")
+                st.rerun()
+            except sqlite3.IntegrityError:
+                st.error("We could not record this payment. Contact the app owner for help.")
     with sqlite3.connect(DB_PATH) as conn:
-        my_payments = conn.execute("SELECT id, amount, status, created_at FROM payments WHERE username=? ORDER BY id DESC LIMIT 10", (current_user,)).fetchall()
+        my_payments = conn.execute("SELECT id, amount, checkout_request_id, status, created_at FROM payments WHERE username=? ORDER BY id DESC LIMIT 10", (current_user,)).fetchall()
     if my_payments:
-        st.write("**Your recent payment requests**")
-        st.dataframe(pd.DataFrame(my_payments, columns=["Payment ID", "Amount (KES)", "Status", "Requested at"]), use_container_width=True, hide_index=True)
+        st.write("**Your recent payment submissions**")
+        st.dataframe(pd.DataFrame(my_payments, columns=["Payment ID", "Amount (KES)", "M-Pesa code", "Status", "Submitted at"]), use_container_width=True, hide_index=True)
 
 admin_username = str(st.secrets.get("ADMIN_USERNAME", ""))
 if admin_username and current_user == admin_username:
@@ -695,8 +712,9 @@ if admin_username and current_user == admin_username:
         st.write("**User statistics**")
         st.dataframe(pd.DataFrame(user_stats, columns=["Username", "Email", "Total predictions", "Predictions today"]).fillna(0), use_container_width=True, hide_index=True)
         if pending_payment_rows:
-            st.write("**Pending payments** — verify payment in your M-Pesa business account before confirming.")
-            st.dataframe(pd.DataFrame(pending_payment_rows, columns=["Payment ID", "Username", "Phone", "Amount (KES)", "Requested at"]), use_container_width=True, hide_index=True)
+            st.write("**Pending payments** — check the transaction code against your personal M-Pesa confirmation message before confirming.")
+            pending_details = conn.execute("SELECT id, username, phone, amount, checkout_request_id, created_at FROM payments WHERE status='PENDING' ORDER BY id DESC").fetchall()
+            st.dataframe(pd.DataFrame(pending_details, columns=["Payment ID", "Username", "Payer phone", "Amount (KES)", "M-Pesa code", "Submitted at"]), use_container_width=True, hide_index=True)
             with st.form("confirm_payment_form"):
                 payment_id_to_confirm = st.number_input("Payment ID to confirm", min_value=1, step=1)
                 confirm_payment = st.form_submit_button("Confirm verified payment and activate 30 days")
