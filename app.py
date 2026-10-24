@@ -191,16 +191,43 @@ def form_summary(league_name, team):
     return " - ".join(results)
 
 
-def goal_estimate(results):
+
+def goal_estimate(results, default_scored=1.2, default_conceded=1.2):
+    """
+    Estimate goals scored and conceded using recent matches.
+    Use sensible fallback values when historical data is missing.
+    """
+
     if not results:
-        return None, None
+        return float(default_scored), float(default_conceded)
 
     recent = results[-5:]
 
-    scored = np.mean([m[1] for m in recent])
-    conceded = np.mean([m[2] for m in recent])
+    # Ignore incomplete or invalid match records
+    valid_matches = []
+    for match in recent:
+        try:
+            scored = float(match[1])
+            conceded = float(match[2])
 
-    return float(scored), float(conceded)
+            if (
+                np.isfinite(scored)
+                and np.isfinite(conceded)
+                and scored >= 0
+                and conceded >= 0
+            ):
+                valid_matches.append((scored, conceded))
+        except (TypeError, ValueError, IndexError):
+            continue
+
+    # If no valid historical matches remain, use fallback values
+    if not valid_matches:
+        return float(default_scored), float(default_conceded)
+
+    scored_avg = np.mean([m[0] for m in valid_matches])
+    conceded_avg = np.mean([m[1] for m in valid_matches])
+
+    return float(scored_avg), float(conceded_avg)
 
 
 def estimate_score(home_results, away_results):
